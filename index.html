@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Mini Tetris 8x8 - Очки</title>
+<title>Mini Tetris 8x8 Drag & Drop</title>
 <style>
   body {
     display: flex;
@@ -23,6 +23,7 @@
     grid-template-rows: repeat(8, 40px);
     gap: 2px;
     margin-bottom: 20px;
+    position: relative;
   }
   .cell {
     width: 40px;
@@ -40,10 +41,11 @@
   }
   .block {
     display: grid;
-    grid-template-columns: repeat(2, 30px);
-    grid-template-rows: repeat(2, 30px);
+    grid-template-columns: repeat(2, 40px);
+    grid-template-rows: repeat(2, 40px);
     gap: 2px;
-    cursor: pointer;
+    cursor: grab;
+    position: relative;
   }
   .block .cell {
     background: #555;
@@ -74,7 +76,7 @@ for(let i=0;i<64;i++){
   grid.push(cell);
 }
 
-// Примеры блоков (до 2x2 для простоты)
+// Примеры блоков (до 2x2)
 const blocks = [
   [[1]],
   [[1,1]],
@@ -97,6 +99,8 @@ function generateBlocks(){
     const div = document.createElement('div');
     div.classList.add('block');
     div.dataset.index = i;
+    div.dataset.width = b[0].length;
+    div.dataset.height = b.length;
     for(let r=0;r<2;r++){
       for(let c=0;c<2;c++){
         const cell = document.createElement('div');
@@ -107,31 +111,62 @@ function generateBlocks(){
     }
     blocksDiv.appendChild(div);
 
-    div.addEventListener('click', () => {
-      selectBlock(i);
-    });
+    makeDraggable(div, b);
   }
 }
 
-// Выбор блока
-function selectBlock(idx){
-  const block = currentBlocks[idx];
-  let x = prompt('Введите X (0-7) для верхнего левого угла блока:');
-  let y = prompt('Введите Y (0-7) для верхнего левого угла блока:');
-  x = parseInt(x); y = parseInt(y);
-  if(canPlace(block,x,y)){
-    placeBlock(block,x,y);
-    score += 10; // +10 за каждый блок
-    placedCount++;
-    checkFullLines();
-    updateScore();
-    // Если поставлено 3 блока, генерируем новые
-    if(placedCount >= 3){
-      generateBlocks();
+// Drag & Drop
+function makeDraggable(div, block){
+  div.onmousedown = function(e){
+    e.preventDefault();
+    let shiftX = e.clientX - div.getBoundingClientRect().left;
+    let shiftY = e.clientY - div.getBoundingClientRect().top;
+    div.style.position = 'absolute';
+    div.style.zIndex = 1000;
+    document.body.append(div);
+
+    moveAt(e.pageX, e.pageY);
+
+    function moveAt(pageX, pageY){
+      div.style.left = pageX - shiftX + 'px';
+      div.style.top = pageY - shiftY + 'px';
     }
-  } else {
-    alert('Нельзя разместить блок здесь!');
-  }
+
+    function onMouseMove(e){
+      moveAt(e.pageX, e.pageY);
+    }
+
+    document.addEventListener('mousemove', onMouseMove);
+
+    div.onmouseup = function(){
+      document.removeEventListener('mousemove', onMouseMove);
+      div.onmouseup = null;
+
+      // Определяем клетку
+      const gameRect = game.getBoundingClientRect();
+      const x = Math.floor((e.clientX - gameRect.left)/42);
+      const y = Math.floor((e.clientY - gameRect.top)/42);
+
+      if(canPlace(block, x, y)){
+        placeBlock(block, x, y);
+        score += 10;
+        placedCount++;
+        checkFullLines();
+        updateScore();
+        div.remove();
+        if(placedCount>=3){
+          generateBlocks();
+        }
+      } else {
+        // Возвращаем блок обратно
+        div.remove();
+      }
+    };
+  };
+
+  div.ondragstart = function() {
+    return false;
+  };
 }
 
 // Проверка возможности поставить блок
@@ -184,25 +219,24 @@ function checkFullLines(){
     if(full) for(let r=0;r<width;r++) toRemove.push(r*width+c);
   }
 
-  if(toRemove.length > 0){
-    score += 20; // +20 за заполненную линию
+  if(toRemove.length>0){
+    score += 20;
     updateScore();
   }
 
-  // Анимация удаления
   toRemove.forEach(idx => grid[idx].style.background = '#f00');
-  setTimeout(() => {
+  setTimeout(()=>{
     toRemove.forEach(idx => grid[idx].classList.remove('filled'));
     toRemove.forEach(idx => grid[idx].style.background = '#333');
   }, 300);
 }
 
-// Обновление счетчика
+// Обновление очков
 function updateScore(){
   scoreDisplay.textContent = 'Очки: ' + score;
 }
 
-// Запуск игры
+// Старт игры
 generateBlocks();
 </script>
 </body>
