@@ -2,22 +2,27 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<title>Mini Tetris 8x8</title>
+<title>Mini Tetris 8x8 - Очки</title>
 <style>
   body {
     display: flex;
-    justify-content: center;
+    flex-direction: column;
     align-items: center;
-    height: 100vh;
     background: #222;
     color: #fff;
     font-family: sans-serif;
+    padding-top: 20px;
+  }
+  #score {
+    font-size: 24px;
+    margin-bottom: 10px;
   }
   #game {
     display: grid;
     grid-template-columns: repeat(8, 40px);
     grid-template-rows: repeat(8, 40px);
     gap: 2px;
+    margin-bottom: 20px;
   }
   .cell {
     width: 40px;
@@ -28,20 +33,40 @@
   .filled {
     background: #0f0;
   }
+  #blocks {
+    display: flex;
+    gap: 20px;
+    margin-bottom: 10px;
+  }
+  .block {
+    display: grid;
+    grid-template-columns: repeat(2, 30px);
+    grid-template-rows: repeat(2, 30px);
+    gap: 2px;
+    cursor: pointer;
+  }
+  .block .cell {
+    background: #555;
+  }
+  .block .filled {
+    background: #0f0;
+  }
 </style>
 </head>
 <body>
-<div>
-  <div id="game"></div>
-  <button id="next">Добавить блоки</button>
-</div>
+<div id="score">Очки: 0</div>
+<div id="game"></div>
+<div id="blocks"></div>
 
 <script>
-const game = document.getElementById('game');
 const width = 8;
+const game = document.getElementById('game');
+const scoreDisplay = document.getElementById('score');
 let grid = [];
+let score = 0;
+let placedCount = 0;
 
-// Инициализация сетки
+// Создаем игровое поле
 for(let i=0;i<64;i++){
   const cell = document.createElement('div');
   cell.classList.add('cell');
@@ -49,29 +74,64 @@ for(let i=0;i<64;i++){
   grid.push(cell);
 }
 
-// Примеры блоков (1x1 или 2x1)
+// Примеры блоков (до 2x2 для простоты)
 const blocks = [
-  [[1]],           // 1x1
-  [[1,1]],         // 1x2 горизонтально
-  [[1],[1]],       // 2x1 вертикально
-  [[1,1],[1,0]]    // L-образная
+  [[1]],
+  [[1,1]],
+  [[1],[1]],
+  [[1,1],[1,0]]
 ];
 
-// Функция добавления блоков снизу
-function addBlocks(){
-  let added = 0;
-  while(added < 3){
-    const block = blocks[Math.floor(Math.random()*blocks.length)];
-    const bw = block[0].length;
-    const bh = block.length;
-    const x = Math.floor(Math.random() * (width - bw + 1));
-    const y = 7 - bh + 1; // снизу
-    if(canPlace(block,x,y)){
-      placeBlock(block,x,y);
-      added++;
+let currentBlocks = [];
+
+// Генерация 3 блоков
+function generateBlocks(){
+  const blocksDiv = document.getElementById('blocks');
+  blocksDiv.innerHTML = '';
+  currentBlocks = [];
+  placedCount = 0;
+
+  for(let i=0;i<3;i++){
+    const b = blocks[Math.floor(Math.random()*blocks.length)];
+    currentBlocks.push(b);
+    const div = document.createElement('div');
+    div.classList.add('block');
+    div.dataset.index = i;
+    for(let r=0;r<2;r++){
+      for(let c=0;c<2;c++){
+        const cell = document.createElement('div');
+        cell.classList.add('cell');
+        if(b[r] && b[r][c]) cell.classList.add('filled');
+        div.appendChild(cell);
+      }
     }
+    blocksDiv.appendChild(div);
+
+    div.addEventListener('click', () => {
+      selectBlock(i);
+    });
   }
-  checkFullLines();
+}
+
+// Выбор блока
+function selectBlock(idx){
+  const block = currentBlocks[idx];
+  let x = prompt('Введите X (0-7) для верхнего левого угла блока:');
+  let y = prompt('Введите Y (0-7) для верхнего левого угла блока:');
+  x = parseInt(x); y = parseInt(y);
+  if(canPlace(block,x,y)){
+    placeBlock(block,x,y);
+    score += 10; // +10 за каждый блок
+    placedCount++;
+    checkFullLines();
+    updateScore();
+    // Если поставлено 3 блока, генерируем новые
+    if(placedCount >= 3){
+      generateBlocks();
+    }
+  } else {
+    alert('Нельзя разместить блок здесь!');
+  }
 }
 
 // Проверка возможности поставить блок
@@ -79,7 +139,10 @@ function canPlace(block,x,y){
   for(let r=0;r<block.length;r++){
     for(let c=0;c<block[0].length;c++){
       if(block[r][c]){
-        const idx = (y+r)*width + (x+c);
+        const gx = x+c;
+        const gy = y+r;
+        if(gx<0 || gx>=width || gy<0 || gy>=width) return false;
+        const idx = gy*width + gx;
         if(grid[idx].classList.contains('filled')) return false;
       }
     }
@@ -87,7 +150,7 @@ function canPlace(block,x,y){
   return true;
 }
 
-// Установка блока
+// Размещение блока
 function placeBlock(block,x,y){
   for(let r=0;r<block.length;r++){
     for(let c=0;c<block[0].length;c++){
@@ -99,43 +162,48 @@ function placeBlock(block,x,y){
   }
 }
 
-// Проверка горизонтальных и вертикальных линий
+// Проверка линий и начисление очков
 function checkFullLines(){
   let toRemove = [];
-  
+
   // Горизонтальные
   for(let r=0;r<width;r++){
     let full = true;
     for(let c=0;c<width;c++){
       if(!grid[r*width + c].classList.contains('filled')) full=false;
     }
-    if(full){
-      for(let c=0;c<width;c++) toRemove.push(r*width+c);
-    }
+    if(full) for(let c=0;c<width;c++) toRemove.push(r*width+c);
   }
-  
+
   // Вертикальные
   for(let c=0;c<width;c++){
     let full = true;
     for(let r=0;r<width;r++){
       if(!grid[r*width + c].classList.contains('filled')) full=false;
     }
-    if(full){
-      for(let r=0;r<width;r++) toRemove.push(r*width+c);
-    }
+    if(full) for(let r=0;r<width;r++) toRemove.push(r*width+c);
   }
 
-  // Анимация исчезновения
-  toRemove.forEach(idx => {
-    grid[idx].style.background = '#f00';
-  });
+  if(toRemove.length > 0){
+    score += 20; // +20 за заполненную линию
+    updateScore();
+  }
+
+  // Анимация удаления
+  toRemove.forEach(idx => grid[idx].style.background = '#f00');
   setTimeout(() => {
     toRemove.forEach(idx => grid[idx].classList.remove('filled'));
     toRemove.forEach(idx => grid[idx].style.background = '#333');
   }, 300);
 }
 
-document.getElementById('next').addEventListener('click', addBlocks);
+// Обновление счетчика
+function updateScore(){
+  scoreDisplay.textContent = 'Очки: ' + score;
+}
+
+// Запуск игры
+generateBlocks();
 </script>
 </body>
 </html>
