@@ -24,9 +24,9 @@ body {
 }
 .cell { width: 40px; height: 40px; background: #333; transition: background 0.3s; }
 .filled { background: #0f0; }
-#blocks { display: flex; gap: 20px; margin-bottom: 10px; }
-.block { position: absolute; cursor: grab; }
-.block-cell { width: 40px; height: 40px; background: #0f0; float: left; margin: 2px; }
+#blocks { display: flex; gap: 20px; margin-bottom: 20px; min-height: 90px; }
+.block { cursor: grab; position: relative; display: flex; flex-wrap: wrap; }
+.block-cell { width: 40px; height: 40px; background: #0f0; margin: 2px; }
 </style>
 </head>
 <body>
@@ -39,26 +39,30 @@ const width = 8;
 const gridElem = document.getElementById('game');
 const blocksDiv = document.getElementById('blocks');
 const scoreDisplay = document.getElementById('score');
-let grid = [];
+let gridState = [];
 let score = 0;
 let placedCount = 0;
 
-// Создаем игровое поле 8x8
-for(let i=0;i<64;i++){
-  const cell = document.createElement('div');
-  cell.classList.add('cell');
-  gridElem.appendChild(cell);
-  grid.push(cell);
+// Создаем игровое поле и массив состояния
+for(let y=0;y<width;y++){
+  gridState[y]=[];
+  for(let x=0;x<width;x++){
+    const cell = document.createElement('div');
+    cell.classList.add('cell');
+    gridElem.appendChild(cell);
+    gridState[y][x] = 0;
+  }
 }
 
 // Блоки как массив координат относительно левого верхнего угла
 const blocksData = [
   [[0,0]],                 // 1x1
-  [[0,0],[1,0]],           // 2 горизонтально
-  [[0,0],[0,1]],           // 2 вертикально
+  [[0,0],[1,0]],           // горизонтальная 2x1
+  [[0,0],[0,1]],           // вертикальная 1x2
   [[0,0],[1,0],[0,1]]      // L-образная
 ];
 
+// Генерация 3 блоков
 function generateBlocks(){
   blocksDiv.innerHTML = '';
   placedCount = 0;
@@ -72,24 +76,17 @@ function generateBlocks(){
 function createBlockElement(blockShape){
   const block = document.createElement('div');
   block.classList.add('block');
-  document.body.appendChild(block);
+  block.dataset.width = Math.max(...blockShape.map(c=>c[0]))+1;
+  block.dataset.height = Math.max(...blockShape.map(c=>c[1]))+1;
   
-  // Определяем размер блока
-  let maxX = Math.max(...blockShape.map(c=>c[0]));
-  let maxY = Math.max(...blockShape.map(c=>c[1]));
-  block.style.width = (maxX+1)*42 + 'px';
-  block.style.height = (maxY+1)*42 + 'px';
-  
-  // Создаем клетки
+  // Создаем клетки блока
   blockShape.forEach(c=>{
     const cell = document.createElement('div');
     cell.classList.add('block-cell');
-    cell.style.position = 'absolute';
-    cell.style.left = c[0]*42 + 'px';
-    cell.style.top = c[1]*42 + 'px';
     block.appendChild(cell);
   });
-
+  
+  blocksDiv.appendChild(block);
   makeDraggable(block, blockShape);
 }
 
@@ -99,24 +96,24 @@ function makeDraggable(block, shape){
     e.preventDefault();
     let shiftX = e.clientX - block.getBoundingClientRect().left;
     let shiftY = e.clientY - block.getBoundingClientRect().top;
+    block.style.position = 'absolute';
     block.style.zIndex = 1000;
+    document.body.append(block);
 
-    moveAt(e.pageX, e.pageY);
-
-    function moveAt(pageX, pageY){
+    function moveAt(pageX,pageY){
       block.style.left = pageX - shiftX + 'px';
       block.style.top = pageY - shiftY + 'px';
     }
+    moveAt(e.pageX,e.pageY);
 
     function onMouseMove(e){
-      moveAt(e.pageX, e.pageY);
+      moveAt(e.pageX,e.pageY);
     }
-
     document.addEventListener('mousemove', onMouseMove);
 
     block.onmouseup = function(e){
       document.removeEventListener('mousemove', onMouseMove);
-      block.onmouseup = null;
+      block.onmouseup=null;
 
       const gameRect = gridElem.getBoundingClientRect();
       const x = Math.floor((e.clientX - gameRect.left)/42);
@@ -124,7 +121,7 @@ function makeDraggable(block, shape){
 
       if(canPlace(shape, x, y)){
         placeBlock(shape, x, y);
-        score += 10;
+        score +=10;
         placedCount++;
         checkFullLines();
         updateScore();
@@ -132,59 +129,64 @@ function makeDraggable(block, shape){
         if(placedCount>=3) generateBlocks();
       } else {
         // возвращаем на панель
-        block.style.left = '';
-        block.style.top = '';
-        block.style.position = '';
-        block.style.zIndex = '';
+        block.style.position='';
+        block.style.left='';
+        block.style.top='';
+        block.style.zIndex='';
         blocksDiv.appendChild(block);
       }
     };
   };
-  block.ondragstart = () => false;
+  block.ondragstart = ()=>false;
 }
 
-function canPlace(block, x, y){
+// Проверка возможности поставить блок
+function canPlace(block,x,y){
   return block.every(c=>{
-    const gx = x + c[0];
-    const gy = y + c[1];
-    if(gx<0 || gx>=width || gy<0 || gy>=width) return false;
-    const idx = gy*width + gx;
-    return !grid[idx].classList.contains('filled');
+    const gx = x+c[0];
+    const gy = y+c[1];
+    if(gx<0||gx>=width||gy<0||gy>=width) return false;
+    return gridState[gy][gx]===0;
   });
 }
 
-function placeBlock(block, x, y){
+// Размещение блока
+function placeBlock(block,x,y){
   block.forEach(c=>{
-    const idx = (y+c[1])*width + (x+c[0]);
-    grid[idx].classList.add('filled');
+    const gx = x+c[0];
+    const gy = y+c[1];
+    gridState[gy][gx]=1;
+    gridElem.children[gy*width+gx].classList.add('filled');
   });
 }
 
+// Проверка линий
 function checkFullLines(){
   let toRemove=[];
-  for(let r=0;r<width;r++){
-    let full=true;
-    for(let c=0;c<width;c++){
-      if(!grid[r*width+c].classList.contains('filled')) full=false;
-    }
-    if(full) for(let c=0;c<width;c++) toRemove.push(r*width+c);
+  // Горизонтальные
+  for(let y=0;y<width;y++){
+    if(gridState[y].every(c=>c===1)) for(let x=0;x<width;x++) toRemove.push([x,y]);
   }
-  for(let c=0;c<width;c++){
+  // Вертикальные
+  for(let x=0;x<width;x++){
     let full=true;
-    for(let r=0;r<width;r++){
-      if(!grid[r*width+c].classList.contains('filled')) full=false;
-    }
-    if(full) for(let r=0;r<width;r++) toRemove.push(r*width+c);
+    for(let y=0;y<width;y++) if(gridState[y][x]===0) full=false;
+    if(full) for(let y=0;y<width;y++) toRemove.push([x,y]);
   }
-  if(toRemove.length>0){ score+=20; updateScore(); }
-  toRemove.forEach(idx => grid[idx].style.background='#f00');
+  if(toRemove.length>0) score+=20;
+
+  // Анимация удаления
+  toRemove.forEach(([x,y])=>gridElem.children[y*width+x].style.background='#f00');
   setTimeout(()=>{
-    toRemove.forEach(idx=>grid[idx].classList.remove('filled'));
-    toRemove.forEach(idx=>grid[idx].style.background='#333');
+    toRemove.forEach(([x,y])=>{
+      gridState[y][x]=0;
+      gridElem.children[y*width+x].classList.remove('filled');
+      gridElem.children[y*width+x].style.background='#333';
+    });
   },300);
 }
 
-function updateScore(){ scoreDisplay.textContent = 'Очки: '+score; }
+function updateScore(){ scoreDisplay.textContent='Очки: '+score; }
 
 generateBlocks();
 </script>
